@@ -1,0 +1,67 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+
+tune_network() {
+	# 1. Wait for ath11k debugfs nodes up to 30 seconds
+	for i in $(seq 1 30); do
+		if ls /sys/kernel/debug/ath11k/*/stats_disable >/dev/null 2>&1; then
+			break
+		fi
+		sleep 1
+	done
+
+	# 2. Enable ath11k Fast-RX & Fast-TX by bypassing debug stats
+	for d in /sys/kernel/debug/ath11k/*/stats_disable; do
+		[ -f "$d" ] && echo 1 > "$d"
+	done
+
+	# 3. SMP IRQ affinity balance between Core 0 (mask 1) and Core 1 (mask 2)
+	# Distribute REO destination rings (Wi-Fi RX) across both cores
+	local r1=$(awk -F: '/pci1_reo2host_destination_ring1/{print $1}' /proc/interrupts | tr -d ' ')
+	local r2=$(awk -F: '/pci1_reo2host_destination_ring2/{print $1}' /proc/interrupts | tr -d ' ')
+	local r3=$(awk -F: '/pci1_reo2host_destination_ring3/{print $1}' /proc/interrupts | tr -d ' ')
+	local r4=$(awk -F: '/pci1_reo2host_destination_ring4/{print $1}' /proc/interrupts | tr -d ' ')
+	[ -n "$r1" ] && echo 1 > /proc/irq/$r1/smp_affinity 2>/dev/null
+	[ -n "$r2" ] && echo 2 > /proc/irq/$r2/smp_affinity 2>/dev/null
+	[ -n "$r3" ] && echo 1 > /proc/irq/$r3/smp_affinity 2>/dev/null
+	[ -n "$r4" ] && echo 2 > /proc/irq/$r4/smp_affinity 2>/dev/null
+
+	# Distribute WBM Tx completion rings across both cores
+	local w1=$(awk -F: '/pci1_wbm2host_tx_completions_ring1/{print $1}' /proc/interrupts | tr -d ' ')
+	local w2=$(awk -F: '/pci1_wbm2host_tx_completions_ring2/{print $1}' /proc/interrupts | tr -d ' ')
+	[ -n "$w1" ] && echo 1 > /proc/irq/$w1/smp_affinity 2>/dev/null
+	[ -n "$w2" ] && echo 2 > /proc/irq/$w2/smp_affinity 2>/dev/null
+
+	# Distribute Copy Engine rings across both cores
+	local ce1=$(awk -F: '/pci1_ce1/{print $1}' /proc/interrupts | tr -d ' ')
+	local ce2=$(awk -F: '/pci1_ce2/{print $1}' /proc/interrupts | tr -d ' ')
+	[ -n "$ce1" ] && echo 1 > /proc/irq/$ce1/smp_affinity 2>/dev/null
+	[ -n "$ce2" ] && echo 2 > /proc/irq/$ce2/smp_affinity 2>/dev/null
+
+	# Distribute NSS queues across both cores
+	local nss0=$(awk -F: '/nss_queue0/{print $1}' /proc/interrupts | tr -d ' ')
+	local nss1=$(awk -F: '/nss_queue1/{print $1}' /proc/interrupts | tr -d ' ')
+	[ -n "$nss0" ] && echo 1 > /proc/irq/$nss0/smp_affinity 2>/dev/null
+	[ -n "$nss1" ] && echo 2 > /proc/irq/$nss1/smp_affinity 2>/dev/null
+
+	# 4. Tune socket buffers and backlog for multi-stream throughput
+	sysctl -w net.core.netdev_max_backlog=10000 >/dev/null 2>&1
+	sysctl -w net.core.rmem_max=4194304 >/dev/null 2>&1
+	sysctl -w net.core.wmem_max=4194304 >/dev/null 2>&1
+	sysctl -w net.ipv4.tcp_rmem="4096 87380 4194304" >/dev/null 2>&1
+	sysctl -w net.ipv4.tcp_wmem="4096 65536 4194304" >/dev/null 2>&1
+
+	# 5. Set CPU frequency governor to performance
+	for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+		[ -f "$g" ] && echo performance > "$g" 2>/dev/null
+	done
+}
+
+start() {
+	tune_network &
+}
+
+boot() {
+	tune_network &
+}

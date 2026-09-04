@@ -451,13 +451,13 @@ Signed-off-by: Sriram R <srirrama@codeaurora.org>
 +	 * currently reserved/not used.
 +	 */
 +	ring_hash_map = HAL_HASH_ROUTING_RING_SW1 << 0 |
-+			HAL_HASH_ROUTING_RING_SW2 << 4 |
-+			HAL_HASH_ROUTING_RING_SW3 << 8 |
-+			HAL_HASH_ROUTING_RING_SW4 << 12 |
++			HAL_HASH_ROUTING_RING_SW1 << 4 |
++			HAL_HASH_ROUTING_RING_SW1 << 8 |
++			HAL_HASH_ROUTING_RING_SW1 << 12 |
 +			HAL_HASH_ROUTING_RING_SW1 << 16 |
-+			HAL_HASH_ROUTING_RING_SW2 << 20 |
-+			HAL_HASH_ROUTING_RING_SW3 << 24 |
-+			HAL_HASH_ROUTING_RING_SW4 << 28;
++			HAL_HASH_ROUTING_RING_SW1 << 20 |
++			HAL_HASH_ROUTING_RING_SW1 << 24 |
++			HAL_HASH_ROUTING_RING_SW1 << 28;
 +
 +	return ring_hash_map;
 +}

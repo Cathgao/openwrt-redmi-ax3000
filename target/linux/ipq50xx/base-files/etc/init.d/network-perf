@@ -16,43 +16,30 @@ tune_network() {
 		[ -f "$d" ] && echo 1 > "$d"
 	done
 
-	# 3. SMP IRQ affinity balance between Core 0 (mask 1) and Core 1 (mask 2)
-	# Distribute REO destination rings (Wi-Fi RX) across both cores
-	local r1=$(awk -F: '/pci1_reo2host_destination_ring1/{print $1}' /proc/interrupts | tr -d ' ')
-	local r2=$(awk -F: '/pci1_reo2host_destination_ring2/{print $1}' /proc/interrupts | tr -d ' ')
-	local r3=$(awk -F: '/pci1_reo2host_destination_ring3/{print $1}' /proc/interrupts | tr -d ' ')
-	local r4=$(awk -F: '/pci1_reo2host_destination_ring4/{print $1}' /proc/interrupts | tr -d ' ')
-	[ -n "$r1" ] && echo 1 > /proc/irq/$r1/smp_affinity 2>/dev/null
-	[ -n "$r2" ] && echo 2 > /proc/irq/$r2/smp_affinity 2>/dev/null
-	[ -n "$r3" ] && echo 1 > /proc/irq/$r3/smp_affinity 2>/dev/null
-	[ -n "$r4" ] && echo 2 > /proc/irq/$r4/smp_affinity 2>/dev/null
+	# 3. Lock REO hardware hash to Ring 1 (FIFO serialization) to prevent packet reordering
+	for h in /sys/kernel/debug/ath11k/*/rx_hash; do
+		[ -f "$h" ] && echo '11111111' > "$h"
+	done
 
-	# Distribute WBM Tx completion rings across both cores
-	local w1=$(awk -F: '/pci1_wbm2host_tx_completions_ring1/{print $1}' /proc/interrupts | tr -d ' ')
-	local w2=$(awk -F: '/pci1_wbm2host_tx_completions_ring2/{print $1}' /proc/interrupts | tr -d ' ')
-	[ -n "$w1" ] && echo 1 > /proc/irq/$w1/smp_affinity 2>/dev/null
-	[ -n "$w2" ] && echo 2 > /proc/irq/$w2/smp_affinity 2>/dev/null
+	# 4. SMP IRQ affinity pipelining:
+	# Keep all Wi-Fi RX REO rings on CPU 0 (mask 1) for strict sequence ordering
+	for irq in $(awk -F: '/reo2host/{print $1}' /proc/interrupts | tr -d ' '); do
+		echo 1 > /proc/irq/$irq/smp_affinity 2>/dev/null
+	done
 
-	# Distribute Copy Engine rings across both cores
-	local ce1=$(awk -F: '/pci1_ce1/{print $1}' /proc/interrupts | tr -d ' ')
-	local ce2=$(awk -F: '/pci1_ce2/{print $1}' /proc/interrupts | tr -d ' ')
-	[ -n "$ce1" ] && echo 1 > /proc/irq/$ce1/smp_affinity 2>/dev/null
-	[ -n "$ce2" ] && echo 2 > /proc/irq/$ce2/smp_affinity 2>/dev/null
+	# Offload NSS completions and Wi-Fi Tx ACK completions to CPU 1 (mask 2)
+	for irq in $(awk -F: '/nss_queue|wbm2host/{print $1}' /proc/interrupts | tr -d ' '); do
+		echo 2 > /proc/irq/$irq/smp_affinity 2>/dev/null
+	done
 
-	# Distribute NSS queues across both cores
-	local nss0=$(awk -F: '/nss_queue0/{print $1}' /proc/interrupts | tr -d ' ')
-	local nss1=$(awk -F: '/nss_queue1/{print $1}' /proc/interrupts | tr -d ' ')
-	[ -n "$nss0" ] && echo 1 > /proc/irq/$nss0/smp_affinity 2>/dev/null
-	[ -n "$nss1" ] && echo 2 > /proc/irq/$nss1/smp_affinity 2>/dev/null
-
-	# 4. Tune socket buffers and backlog for multi-stream throughput
+	# 5. Tune socket buffers and backlog for multi-stream throughput
 	sysctl -w net.core.netdev_max_backlog=10000 >/dev/null 2>&1
 	sysctl -w net.core.rmem_max=4194304 >/dev/null 2>&1
 	sysctl -w net.core.wmem_max=4194304 >/dev/null 2>&1
 	sysctl -w net.ipv4.tcp_rmem="4096 87380 4194304" >/dev/null 2>&1
 	sysctl -w net.ipv4.tcp_wmem="4096 65536 4194304" >/dev/null 2>&1
 
-	# 5. Set CPU frequency governor to performance
+	# 6. Set CPU frequency governor to performance
 	for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
 		[ -f "$g" ] && echo performance > "$g" 2>/dev/null
 	done

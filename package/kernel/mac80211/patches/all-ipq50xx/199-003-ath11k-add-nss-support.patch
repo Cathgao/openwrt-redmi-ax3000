@@ -85,7 +85,7 @@ Signed-off-by: Sriram R <srirrama@codeaurora.org>
  #include "hif.h"
  #include "wow.h"
  
-+unsigned int nss_offload;
++unsigned int nss_offload = 1;
 +#ifdef CPTCFG_ATH11K_NSS_SUPPORT
 +module_param_named(nss_offload, nss_offload, uint, 0644);
 +MODULE_PARM_DESC(nss_offload, "Enable NSS Offload support");

@@ -1,0 +1,22 @@
+#!/bin/sh
+
+[ -f /etc/config/wireless ] || exit 0
+
+idx=0
+while :; do
+	type=$(uci -q get wireless.radio${idx}.type)
+	[ -n "$type" ] || break
+	uci set wireless.radio${idx}.disabled=0
+	band=$(uci -q get wireless.radio${idx}.band)
+	if [ "$band" = "5g" ]; then
+		cur_ssid=$(uci -q get wireless.default_radio${idx}.ssid)
+		if [ "$cur_ssid" = "OpenWrt" ]; then
+			uci set wireless.default_radio${idx}.ssid="OpenWrt_5G"
+		fi
+		uci set wireless.radio${idx}.htmode="HE160"
+	fi
+	idx=$((idx + 1))
+done
+
+uci -q commit wireless
+exit 0
